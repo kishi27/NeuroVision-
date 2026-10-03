@@ -56,7 +56,8 @@ function createFlankerParams(targetParams) {
  * @param {number} centerX - X position on canvas (pixels)
  * @param {number} centerY - Y position on canvas (pixels)
  * @param {number} sizeInDegrees - Total patch size (degrees of visual angle)
- * @param {Object} params - Gabor parameters {lambda, theta, psi, sigma, gamma, contrast}
+ * @param {Object} params - Gabor parameters {lambda, theta, psi, sigma, gamma, contrast};
+ * optional backgroundRGB and modulationAmplitude control only output luminance/color.
  * @param {number} pixelsPerDegree - Calibration scale factor (pixels per degree)
  */
 export function drawGaborPatch(ctx, centerX, centerY, sizeInDegrees, params = {}, pixelsPerDegree) {
@@ -66,6 +67,8 @@ export function drawGaborPatch(ctx, centerX, centerY, sizeInDegrees, params = {}
   const sigma = params.sigma ?? 0.3;
   const gamma = params.gamma ?? 1.0;
   const contrast = params.contrast ?? 0.5;
+  const backgroundRGB = params.backgroundRGB ?? [127, 127, 127];
+  const modulationAmplitude = params.modulationAmplitude ?? 127;
 
   // Convert degree metrics to pixel units
   const lambda_px = lambda * pixelsPerDegree;
@@ -79,7 +82,7 @@ export function drawGaborPatch(ctx, centerX, centerY, sizeInDegrees, params = {}
   const twoPiOverLambda = (2 * Math.PI) / lambda_px;
   const denom = 2 * sigma_px * sigma_px;
   const gammaSq = gamma * gamma;
-  const scaledContrast = 127 * contrast;
+  const scaledContrast = modulationAmplitude * contrast;
 
   const imageData = ctx.createImageData(patchSizePx, patchSizePx);
   const data = imageData.data;
@@ -99,14 +102,12 @@ export function drawGaborPatch(ctx, centerX, centerY, sizeInDegrees, params = {}
       const carrier = Math.cos((twoPiOverLambda * x_rot) + psi);
       const g = envelope * carrier;
 
-      // Step 1c — Convert intensity around RGB(127, 127, 127)
-      let intensity = 127 + Math.round(scaledContrast * g);
-      if (intensity < 0) intensity = 0;
-      if (intensity > 255) intensity = 255;
-
-      data[index] = intensity;     // R
-      data[index + 1] = intensity; // G
-      data[index + 2] = intensity; // B
+      // Step 1c — Same Gaussian/carrier math; shift RGB base and clip excursion.
+      // Defaults preserve the original RGB(127, 127, 127) output exactly.
+      const excursion = Math.round(scaledContrast * g);
+      data[index] = Math.max(0, Math.min(255, backgroundRGB[0] + excursion));
+      data[index + 1] = Math.max(0, Math.min(255, backgroundRGB[1] + excursion));
+      data[index + 2] = Math.max(0, Math.min(255, backgroundRGB[2] + excursion));
       data[index + 3] = 255;       // A
 
       index += 4;
