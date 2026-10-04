@@ -1,5 +1,5 @@
-export const PAIR_FADE_MS = 1000;
-export const FINAL_FADE_MS = 800;
+export const PAIR_FADE_MS = 800;
+export const FINAL_FADE_MS = 600;
 
 // Visual lifecycle only: matching and input remain owned by the game session.
 export class PairFadeQueue {

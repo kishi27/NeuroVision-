@@ -57,11 +57,11 @@ export class FeedbackAudio {
     // One warm bell note, distinct from the two-note answer chime.
     // Reuse the existing context, envelopes and cancellation safeguards.
     this.play([
-      { frequency: 392, offset: 0, duration: 1.10, type: 'sine', volume: 0.36,
+      { frequency: 392, offset: 0, duration: 1.10, type: 'sine', volume: 0.60,
         attack: 0.004, decayRatio: 0.16, decayFraction: 0.80 },
-      { frequency: 784, offset: 0, duration: 0.72, type: 'sine', volume: 0.065,
+      { frequency: 784, offset: 0, duration: 0.72, type: 'sine', volume: 0.10,
         attack: 0.004, decayRatio: 0.16, decayFraction: 0.80 },
-      { frequency: 1081.92, offset: 0, duration: 0.42, type: 'sine', volume: 0.015,
+      { frequency: 1081.92, offset: 0, duration: 0.42, type: 'sine', volume: 0.025,
         attack: 0.004, decayRatio: 0.16, decayFraction: 0.80 }
     ]);
   }

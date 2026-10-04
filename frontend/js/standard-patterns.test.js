@@ -57,7 +57,7 @@ test('unchanged themes and line bases use unique count/direction combinations wi
     assert.equal(new Set(pattern.patches.map(p=>`${p.visualLineCount}:${p.orientationDegrees}`)).size,6);
     for(const [i,patch] of pattern.patches.entries()){
       const base=STANDARD_LINE_BASES[patch.visualLineCount];
-      assert.ok([0,45,90].includes(patch.orientationDegrees));
+      assert.ok([0,45,90,315].includes(patch.orientationDegrees));
       assert.equal(patch.theta,(90-patch.orientationDegrees)*Math.PI/180);
       assert.equal(patch.lambda,base.lambda);
       assert.equal(patch.sigma,base.sigma);
@@ -102,7 +102,7 @@ test('1000 random rounds select six unique combinations with at least three coun
     const combinations=patches.map(p=>`${p.visualLineCount}:${p.orientationDegrees}`);
     assert.equal(new Set(combinations).size,6);
     for(const [i,p] of patches.entries()){
-      assert.ok([0,45,90].includes(p.orientationDegrees));
+      assert.ok([0,45,90,315].includes(p.orientationDegrees));
       assert.equal(p.gamma,1.0);
       assert.equal(p.lambda,STANDARD_LINE_BASES[p.visualLineCount].lambda);
       assert.equal(p.sigma,STANDARD_LINE_BASES[p.visualLineCount].sigma);
@@ -114,7 +114,7 @@ test('1000 random rounds select six unique combinations with at least three coun
     distributions.add(patches.map(p=>p.visualLineCount).sort().join(','));
   }
   assert.deepEqual([...seenCounts].sort(),[1,2,3,4]);assert.ok(distributions.size>10);
-  assert.deepEqual([...seenCombinations].sort(),[1,2,3,4].flatMap(n=>[0,45,90].map(a=>`${n}:${a}`)).sort());
+  assert.deepEqual([...seenCombinations].sort(),[1,2,3,4].flatMap(n=>[0,45,90,315].map(a=>`${n}:${a}`)).sort());
 });
 
 test('a constant RNG still changes adjacent round combinations without retrying forever',()=>{
@@ -126,6 +126,7 @@ test('a constant RNG still changes adjacent round combinations without retrying 
       assert.equal(new Set(pattern.patches.map(p=>`${p.visualLineCount}:${p.orientationDegrees}`)).size,6);
       assert.ok(new Set(pattern.patches.map(p=>p.orientationDegrees)).size>=2);
       assert.ok(pattern.patches.every(p=>p.gamma===1));
+      assert.ok(pattern.patches.every(p=>[0,45,90,315].includes(p.orientationDegrees)));
     }
   }
 });
@@ -133,8 +134,8 @@ test('a constant RNG still changes adjacent round combinations without retrying 
 test('a two-count draw is corrected with one replacement and no random retries',()=>{
   let calls=0;
   const pattern=createStandardRoundPattern(1,()=>{calls++;return .999999;});
-  assert.equal(calls,11,'Only the twelve-candidate Fisher-Yates shuffle draws randomness');
-  assert.deepEqual(pattern.patches.map(p=>p.visualLineCount),[1,1,1,2,2,3]);
+  assert.equal(calls,15,'Only the sixteen-candidate Fisher-Yates shuffle draws randomness');
+  assert.deepEqual(pattern.patches.map(p=>p.visualLineCount),[1,1,1,1,2,3]);
   assert.equal(new Set(pattern.patches.map(p=>`${p.visualLineCount}:${p.orientationDegrees}`)).size,6);
 });
 
@@ -147,9 +148,9 @@ test('each theme repeats after six rounds while stimulus combinations are genera
   }
 });
 
-test('all 72 theme/count/direction combinations render exactly one to four visible bands at gamma one',()=>{
+test('all 96 theme/count/direction combinations render exactly one to four visible bands at gamma one',()=>{
   const gamma=1.0;
-  for(const[index,pattern]of TEMPORARY_STANDARD_PATTERNS.entries())for(const n of [1,2,3,4])for(const angle of [0,45,90]){
+  for(const[index,pattern]of TEMPORARY_STANDARD_PATTERNS.entries())for(const n of [1,2,3,4])for(const angle of [0,45,90,315]){
     const base=STANDARD_LINE_BASES[n],patch={lambda:base.lambda,sigma:base.sigma,gamma,theta:(90-angle)*Math.PI/180,
       psi:index===5?(base.darkPhase+Math.PI)%(2*Math.PI):base.darkPhase,
       contrast:Math.min(...pattern.contrasts),modulationAmplitude:pattern.modulationAmplitude*base.excursionScale};
@@ -165,4 +166,28 @@ test('all 72 theme/count/direction combinations render exactly one to four visib
     assert.equal(groups,n,`Pattern ${index+1}, ${n} lines, ${angle} degrees, gamma ${gamma}`);
     assert.ok(minExcursion>150,'Every intended band retains strong contrast');
   }
+});
+
+test('315-degree stripes run upper-left to lower-right, opposite to 45-degree stripes',()=>{
+  for(const [index,theme] of TEMPORARY_STANDARD_PATTERNS.entries()){
+    const base=STANDARD_LINE_BASES[1];
+    const params={...base,gamma:1,contrast:theme.contrasts[0],
+      psi:index===5?(base.darkPhase+Math.PI)%(2*Math.PI):base.darkPhase,
+      modulationAmplitude:theme.modulationAmplitude};
+    const images=[45,315].map(angle=>render(theme,{...params,theta:(90-angle)*Math.PI/180}));
+    const polarity=index===5?1:-1;
+    const luminance=(image,x,y)=>polarity*(image[(y*400+x)*4]-theme.backgroundRGB[0]);
+    // On screen, positive x and positive y lie on the descending diagonal.
+    assert.ok(luminance(images[1],240,240)>luminance(images[1],240,160));
+    assert.ok(luminance(images[0],240,160)>luminance(images[0],240,240));
+    assert.notDeepEqual(images[0],images[1]);
+  }
+});
+
+test('adjacent-round fallback cycles within all four orientations including 315 degrees',()=>{
+  const first=createStandardRoundPattern(1,()=>.999999);
+  const next=createStandardRoundPattern(2,()=>.999999,selectionSignature(first.patches));
+  assert.deepEqual(first.patches.map(p=>p.orientationDegrees),[0,45,90,315,0,0]);
+  assert.deepEqual(next.patches.map(p=>p.orientationDegrees),[45,90,315,0,45,45]);
+  assert.equal(new Set(next.patches.map(p=>`${p.visualLineCount}:${p.orientationDegrees}`)).size,6);
 });

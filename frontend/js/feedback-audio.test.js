@@ -161,8 +161,8 @@ test('minute notice is one audible 1100ms note with decaying partials on the reu
   assert.deepEqual(ctx.oscillators.map(o => o.frequencyValue), [392, 784, 1081.92]);
   assert.ok(ctx.oscillators.every(o => o.type === 'sine' && o.started === 10));
   assert.ok(Math.abs(ctx.oscillators[0].stops[0] - 11.10) < 1e-8);
-  assert.deepEqual(ctx.gains.map(g=>g.peak),[.36,.065,.015]);
-  assert.ok(ctx.gains.reduce((sum,g) => sum + g.peak, 0) < 0.5);
+  assert.deepEqual(ctx.gains.map(g=>g.peak),[.60,.10,.025]);
+  assert.ok(ctx.gains.reduce((sum,g) => sum + g.peak, 0) < 0.75);
   assert.ok(ctx.gains.every(g => g.sustain === g.peak * 0.16));
   assert.ok(ctx.gains.every(g => Math.abs(g.attackEnd-10-.004)<1e-8));
   audio.stop(); assert.equal(audio.voices.size, 0);

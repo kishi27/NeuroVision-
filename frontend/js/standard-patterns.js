@@ -8,8 +8,9 @@ export const STANDARD_LINE_BASES = Object.freeze({
   4: Object.freeze({ lambda: 0.36, sigma: 0.23, darkPhase: 0, excursionScale: 5.8 })
 });
 
+const STANDARD_ORIENTATIONS = Object.freeze([0, 45, 90, 315]);
 const STANDARD_COMBINATIONS = Object.freeze([1, 2, 3, 4].flatMap(visualLineCount =>
-  [0, 45, 90].map(orientationDegrees => Object.freeze({ visualLineCount, orientationDegrees }))));
+  STANDARD_ORIENTATIONS.map(orientationDegrees => Object.freeze({ visualLineCount, orientationDegrees }))));
 
 function patch(pattern, id, visualLineCount, orientationDegrees) {
   const base = STANDARD_LINE_BASES[visualLineCount];
@@ -66,14 +67,15 @@ export function createStandardRoundPattern(round, random = Math.random, previous
   let selected = candidates.slice(0, 6);
   const counts = new Set(selected.map(p => p.visualLineCount));
   if (counts.size < 3) {
-    // Six unique choices can cover only two counts when all three directions
-    // of each count were selected. Replace one with an unused count.
+    // Each count has four candidates, so two selected counts each have at
+    // least two choices. Replacing one with an unused count retains both.
     selected[5] = candidates.slice(6).find(p => !counts.has(p.visualLineCount));
   }
   // One direction has only four candidates, so six unique choices always
   // include at least two directions. Retain the adjacent-round repeat guard.
   if (selectionSignature(selected) === previousSelection) {
-    selected = selected.map(p => ({ ...p, orientationDegrees: (p.orientationDegrees + 45) % 135 }));
+    selected = selected.map(p => ({ ...p, orientationDegrees:
+      STANDARD_ORIENTATIONS[(STANDARD_ORIENTATIONS.indexOf(p.orientationDegrees) + 1) % STANDARD_ORIENTATIONS.length] }));
   }
   const patches = selected.map((p, i) => patch(theme, i + 1, p.visualLineCount, p.orientationDegrees));
   return Object.freeze({ ...theme, patches: Object.freeze(patches) });
