@@ -2,19 +2,22 @@
 // All colors and base contrast/amplitude values retain the prior bright revision.
 // orientationDegrees describes stripe direction; theta is its perpendicular carrier.
 export const STANDARD_LINE_BASES = Object.freeze({
-  1: Object.freeze({ lambda: 1.50, sigma: 0.22, darkPhase: Math.PI, excursionScale: 1, gammas: Object.freeze([0.75, 0.95]) }),
-  2: Object.freeze({ lambda: 0.68, sigma: 0.25, darkPhase: 0, excursionScale: 1, gammas: Object.freeze([0.82, 1.00]) }),
-  3: Object.freeze({ lambda: 0.46, sigma: 0.23, darkPhase: Math.PI, excursionScale: 2.6, gammas: Object.freeze([0.90, 1.10]) }),
-  4: Object.freeze({ lambda: 0.36, sigma: 0.23, darkPhase: 0, excursionScale: 5.8, gammas: Object.freeze([0.90, 1.10]) })
+  1: Object.freeze({ lambda: 1.50, sigma: 0.22, darkPhase: Math.PI, excursionScale: 1 }),
+  2: Object.freeze({ lambda: 0.68, sigma: 0.25, darkPhase: 0, excursionScale: 1 }),
+  3: Object.freeze({ lambda: 0.46, sigma: 0.23, darkPhase: Math.PI, excursionScale: 2.6 }),
+  4: Object.freeze({ lambda: 0.36, sigma: 0.23, darkPhase: 0, excursionScale: 5.8 })
 });
 
-function patch(pattern, id, visualLineCount, orientationDegrees, variant = 0) {
+const STANDARD_COMBINATIONS = Object.freeze([1, 2, 3, 4].flatMap(visualLineCount =>
+  [0, 45, 90].map(orientationDegrees => Object.freeze({ visualLineCount, orientationDegrees }))));
+
+function patch(pattern, id, visualLineCount, orientationDegrees) {
   const base = STANDARD_LINE_BASES[visualLineCount];
   return Object.freeze({ id: `pair-${id}`, visualLineCount, orientationDegrees,
     theta: (90 - orientationDegrees) * Math.PI / 180,
     lambda: base.lambda, sigma: base.sigma,
     psi: pattern.backgroundRGB[0] < 30 ? (base.darkPhase + Math.PI) % (2 * Math.PI) : base.darkPhase,
-    gamma: base.gammas[variant], contrast: pattern.contrasts[id - 1],
+    gamma: 1.0, contrast: pattern.contrasts[id - 1],
     modulationAmplitude: pattern.modulationAmplitude * base.excursionScale, sizeInDegrees: 2 });
 }
 
@@ -22,9 +25,9 @@ function pattern(backgroundRGB, modulationAmplitude, contrasts) {
   const theme = { backgroundRGB: Object.freeze(backgroundRGB), modulationAmplitude,
     contrasts: Object.freeze(contrasts), pixelsPerDegree: 192 };
   // Representative fixtures for inspection; gameplay generates fresh patches per round.
-  const lines = [1, 2, 3, 4, 3, 4], angles = [0, 45, 90, 0, 90, 0];
+  const lines = [1, 2, 3, 4, 3, 4], angles = [0, 45, 90, 0, 45, 90];
   return Object.freeze({ ...theme, patches: Object.freeze(lines.map((line, i) =>
-    patch(theme, i + 1, line, angles[i], i >= 4 ? 1 : 0))) });
+    patch(theme, i + 1, line, angles[i]))) });
 }
 
 export const TEMPORARY_STANDARD_PATTERNS = Object.freeze([
@@ -59,23 +62,19 @@ export function selectionSignature(patches) {
 
 export function createStandardRoundPattern(round, random = Math.random, previousSelection) {
   const theme = getStandardPattern(round);
-  const kinds = shuffled([1, 2, 3, 4], random).slice(0, random() < 0.5 ? 3 : 4);
-  const counts = [...kinds];
-  while (counts.length < 6) counts.push(kinds[Math.floor(random() * kinds.length)]);
-  const lines = shuffled(counts, random);
-  // Every direction is used twice, so direction alone cannot identify a pair.
-  let angles = shuffled([0, 0, 45, 45, 90, 90], random);
-  if (selectionSignature(lines.map((n,i) => ({ visualLineCount:n, orientationDegrees:angles[i] }))) === previousSelection) {
-    // Bounded fallback, including deterministic RNGs; never retry indefinitely.
-    angles = angles.map(angle => (angle + 45) % 135);
+  const candidates = shuffled(STANDARD_COMBINATIONS, random);
+  let selected = candidates.slice(0, 6);
+  const counts = new Set(selected.map(p => p.visualLineCount));
+  if (counts.size < 3) {
+    // Six unique choices can cover only two counts when all three directions
+    // of each count were selected. Replace one with an unused count.
+    selected[5] = candidates.slice(6).find(p => !counts.has(p.visualLineCount));
   }
-  const used = new Map();
-  const patches = lines.map((line, i) => {
-    const key = `${line}:${angles[i]}`, variant = used.get(key) ?? 0;
-    used.set(key, variant + 1);
-    // At most two copies of a direction exist; duplicate combinations use two
-    // distinct Gaussian aspect ratios and are separate pairs.
-    return patch(theme, i + 1, line, angles[i], variant);
-  });
+  // One direction has only four candidates, so six unique choices always
+  // include at least two directions. Retain the adjacent-round repeat guard.
+  if (selectionSignature(selected) === previousSelection) {
+    selected = selected.map(p => ({ ...p, orientationDegrees: (p.orientationDegrees + 45) % 135 }));
+  }
+  const patches = selected.map((p, i) => patch(theme, i + 1, p.visualLineCount, p.orientationDegrees));
   return Object.freeze({ ...theme, patches: Object.freeze(patches) });
 }
