@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  TOTAL_ROUNDS, PAIRS_PER_ROUND, createRoundPanels, GaborTouchSession
+  TOTAL_ROUNDS, PAIRS_PER_ROUND, MISMATCH_FEEDBACK_MS, createRoundPanels, GaborTouchSession
 } from './session.js';
 import {
   TEMPORARY_STANDARD_PATTERNS, getStandardPattern, getStandardPatternIndex
 } from './standard-patterns.js';
+import { PairFadeQueue, PAIR_FADE_MS } from './pair-fade-queue.js';
 
 function seededRandom(seed = 12345) {
   return () => {
@@ -58,7 +59,72 @@ test('a repeated tap on the first panel never counts as a pair', () => {
   assert.equal(game.select('unknown-panel'), 'ignored');
 });
 
+test('pair spacing reduces adjacent pairs and increases distance without losing varied layouts', t => {
+  function measures(ids) {
+    const pairs = Map.groupBy(ids.map((id,index) => ({id,index})), p => p.id);
+    let adjacent = 0, distance = 0;
+    for (const [a,b] of pairs.values()) {
+      const d = Math.abs(Math.floor(a.index/3)-Math.floor(b.index/3)) + Math.abs(a.index%3-b.index%3);
+      adjacent += Number(d === 1); distance += d;
+    }
+    return { adjacent, distance };
+  }
+  const totals = { plainAdjacent:0, spacedAdjacent:0, plainDistance:0, spacedDistance:0 };
+  const arrangements = new Set();
+  for (let seed = 1; seed <= 1000; seed++) {
+    const random = seededRandom(seed);
+    const plain = getStandardPattern(1).patches.flatMap(p => [p.id,p.id]);
+    for (let i = plain.length-1; i > 0; i--) {
+      const j = Math.floor(random()*(i+1)); [plain[i],plain[j]] = [plain[j],plain[i]];
+    }
+    const spaced = createRoundPanels(1,seededRandom(seed)).map(p => p.pairId);
+    const a = measures(plain), b = measures(spaced);
+    totals.plainAdjacent += a.adjacent; totals.spacedAdjacent += b.adjacent;
+    totals.plainDistance += a.distance; totals.spacedDistance += b.distance;
+    arrangements.add(spaced.join(','));
+  }
+  assert.ok(totals.spacedAdjacent < totals.plainAdjacent * .5, 'Direct neighbors become substantially less frequent');
+  assert.ok(totals.spacedDistance > totals.plainDistance, 'Pairs are farther apart overall');
+  assert.ok(arrangements.size > 900, 'The result retains varied randomized layouts');
+  t.diagnostic(JSON.stringify({...totals,distinctArrangements:arrangements.size}));
+});
+
+test('spacing uses exactly ten candidates even with constant RNG and repeated arrangements', () => {
+  for (const value of [0,.5,.999999]) {
+    let calls = 0;
+    const random = () => { calls++; return value; };
+    const first = createRoundPanels(1,random);
+    assert.equal(calls,110);
+    const next = createRoundPanels(7,random,first.map(p=>p.pairId));
+    assert.equal(calls,220);
+    assert.notDeepEqual(next.map(p=>p.pairId),first.map(p=>p.pairId));
+    assert.equal(new Set(next.map(p=>p.id)).size,12);
+    assert.ok([...Map.groupBy(next,p=>p.pairId).values()].every(pair=>pair.length===2));
+  }
+});
+
+test('an unmatched panel becomes the next first selection while a matched pair is still fading', () => {
+  const game = new GaborTouchSession(seededRandom()); game.start();
+  const [[a,b],[next]] = groups(game);
+  let finishFade, delay;
+  const fades = new PairFadeQueue({onChange:()=>{},onIdle:()=>{},clearTimer:()=>{},
+    setTimer:(callback,ms)=>{finishFade=callback;delay=ms;return 1;}});
+  game.select(a.id); assert.equal(game.select(b.id),'match');
+  fades.enqueue([a.id,b.id]);
+  assert.equal(delay,800); assert.equal(delay,PAIR_FADE_MS);
+  assert.equal(game.status,'playing');
+  assert.deepEqual(fades.active,[a.id,b.id]);
+  assert.equal(fades.clearedIds.size,0);
+  assert.equal(game.select(next.id),'first');
+  assert.deepEqual(game.selectedIds,[next.id]);
+  assert.equal(game.select(a.id),'ignored');
+  finishFade();
+  assert.deepEqual(game.selectedIds,[next.id]);
+  assert.equal(game.status,'playing');
+});
+
 test('mismatch locks rapid input until cleared and preserves positions', () => {
+  assert.equal(MISMATCH_FEEDBACK_MS,50);
   const game = new GaborTouchSession(seededRandom()); game.start();
   const [[a], [b], [c]] = groups(game);
   const order = game.panels.map(panel => panel.id);

@@ -6,23 +6,40 @@ import { PlayTimer } from './play-timer.js';
 
 export const TOTAL_ROUNDS = 12;
 export const PAIRS_PER_ROUND = 6;
-export const MISMATCH_FEEDBACK_MS = 400;
+export const MISMATCH_FEEDBACK_MS = 50;
 
 export function createRoundPanels(round, random = Math.random, previousArrangement) {
   const panels = getStandardPattern(round).patches.flatMap(({ id }) =>
     [0, 1].map(copy => ({ id: `round-${round}-${id}-${copy}`, pairId: id, matched: false }))
   );
-  // Fisher-Yates: shuffle once when a round is created, never during selection.
-  for (let i = panels.length - 1; i > 0; i--) {
-    const j = Math.floor(random() * (i + 1));
-    [panels[i], panels[j]] = [panels[j], panels[i]];
+  let bestPanels, bestScore = -Infinity;
+  // Ten bounded Fisher-Yates candidates, generated only at round creation.
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const candidate = [...panels];
+    for (let i = candidate.length - 1; i > 0; i--) {
+      const j = Math.floor(random() * (i + 1));
+      [candidate[i], candidate[j]] = [candidate[j], candidate[i]];
+    }
+    const positions = new Map();
+    let score = 0;
+    candidate.forEach((panel, index) => {
+      const first = positions.get(panel.pairId);
+      if (first === undefined) positions.set(panel.pairId, index);
+      else {
+        const distance = Math.abs(Math.floor(first / 3) - Math.floor(index / 3))
+          + Math.abs(first % 3 - index % 3);
+        // Prefer overall separation; discourage direct horizontal/vertical neighbors.
+        score += distance - (distance === 1 ? 12 : 0);
+      }
+    });
+    if (score > bestScore) { bestScore = score; bestPanels = candidate; }
   }
   // A rare identical repeat must not reuse the first set's visible arrangement.
   // Rotate once rather than retrying forever with a deterministic test RNG.
-  if (previousArrangement?.every((pairId, index) => pairId === panels[index].pairId)) {
-    panels.push(panels.shift());
+  if (previousArrangement?.every((pairId, index) => pairId === bestPanels[index].pairId)) {
+    bestPanels.push(bestPanels.shift());
   }
-  return panels;
+  return bestPanels;
 }
 
 // Game state stays independent of canvas dimensions and responsive layout.
